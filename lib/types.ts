@@ -64,6 +64,7 @@ export interface Product {
   tags: string[];
   isBestSeller: boolean;
   imageUrl?: string;
+  imagePublicId?: string;
 }
 
 export interface Customer {

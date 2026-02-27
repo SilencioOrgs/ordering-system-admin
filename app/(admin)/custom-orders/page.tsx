@@ -6,12 +6,11 @@ import { useMemo, useState } from "react";
 import { AdminAvatar } from "@/components/shared/AdminAvatar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useToast } from "@/components/shared/Toast";
-import { customOrderRequests as seed } from "@/lib/mockData";
 import type { CustomOrderRequest, CustomOrderStatus } from "@/lib/types";
 
 export default function CustomOrdersPage() {
   const { toast } = useToast();
-  const [requests, setRequests] = useState<CustomOrderRequest[]>(seed);
+  const [requests, setRequests] = useState<CustomOrderRequest[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState(false);

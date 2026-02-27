@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 
 import { AdminAvatar } from "@/components/shared/AdminAvatar";
 import { useToast } from "@/components/shared/Toast";
-import { conversations as seedConversations } from "@/lib/mockData";
 import type { Conversation, Message } from "@/lib/types";
 
 const quickReplies = [
@@ -16,7 +15,7 @@ const quickReplies = [
 
 export default function MessagesPage() {
   const { toast } = useToast();
-  const [conversations, setConversations] = useState<Conversation[]>(seedConversations);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"all" | "unread" | "resolved">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -63,6 +62,7 @@ export default function MessagesPage() {
         <div className="max-h-[calc(100vh-15rem)] overflow-y-auto lg:max-h-none lg:h-full">
           {list.map((c) => {
             const last = c.messages[c.messages.length - 1];
+            if (!last) return null;
             return (
               <button key={c.id} onClick={() => setSelectedId(c.id)} className={`flex min-h-11 w-full items-center gap-2 border-b border-slate-50 p-3 text-left hover:bg-slate-50 active:scale-95 ${c.unreadCount > 0 ? "bg-emerald-50/60" : ""}`}>
                 <AdminAvatar name={c.customer.name} size="sm" />

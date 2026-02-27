@@ -1,18 +1,76 @@
-"use client";
+﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AdminAvatar } from "@/components/shared/AdminAvatar";
 import { SlideOverDrawer } from "@/components/shared/SlideOverDrawer";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { customers, orders } from "@/lib/mockData";
 import type { Customer } from "@/lib/types";
+
+type ApiOrder = {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  createdAt: string;
+  total: number;
+  status: "Pending" | "Preparing" | "Out for Delivery" | "Delivered" | "Cancelled";
+};
 
 export default function CustomersPage() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
 
-  const list = useMemo(() => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query)), [query]);
+  useEffect(() => {
+    void fetch("/api/admin/orders")
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const body = await res.json();
+        return (body.orders ?? []) as ApiOrder[];
+      })
+      .then((items) => setOrders(items))
+      .catch(() => setOrders([]));
+  }, []);
+
+  const customers = useMemo(() => {
+    const map = new Map<string, Customer>();
+
+    for (const o of orders) {
+      const key = `${o.customerName}::${o.customerPhone}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          id: key,
+          name: o.customerName,
+          phone: o.customerPhone,
+          email: "",
+          totalOrders: 1,
+          totalSpent: Number(o.total ?? 0),
+          lastOrderDate: String(o.createdAt).slice(0, 10),
+          status: "Active",
+        });
+      } else {
+        existing.totalOrders += 1;
+        existing.totalSpent += Number(o.total ?? 0);
+        if (String(o.createdAt) > existing.lastOrderDate) {
+          existing.lastOrderDate = String(o.createdAt).slice(0, 10);
+        }
+      }
+    }
+
+    return Array.from(map.values());
+  }, [orders]);
+
+  const list = useMemo(
+    () => customers.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query)),
+    [customers, query]
+  );
+
+  const selectedOrders = useMemo(
+    () => orders.filter((o) => o.customerName === selected?.name && o.customerPhone === selected?.phone),
+    [orders, selected]
+  );
 
   return (
     <div className="space-y-4">
@@ -27,7 +85,7 @@ export default function CustomersPage() {
                 <td className="px-4 py-3"><AdminAvatar name={c.name} size="sm" /></td>
                 <td className="px-4 py-3 font-medium">{c.name}</td>
                 <td className="px-4 py-3">{c.phone}</td>
-                <td className="px-4 py-3 max-md:hidden">{c.email}</td>
+                <td className="px-4 py-3 max-md:hidden">{c.email || "-"}</td>
                 <td className="px-4 py-3">{c.totalOrders}</td>
                 <td className="px-4 py-3">PHP {c.totalSpent.toLocaleString()}</td>
                 <td className="px-4 py-3 max-md:hidden">{c.lastOrderDate}</td>
@@ -52,10 +110,10 @@ export default function CustomersPage() {
 
       <SlideOverDrawer isOpen={Boolean(selected)} onClose={() => setSelected(null)} title={selected ? `${selected.name} Orders` : "Orders"} width="md">
         <div className="space-y-2">
-          {orders.filter((o) => o.customerName === selected?.name).map((o) => (
+          {selectedOrders.map((o) => (
             <div key={o.id} className="rounded-lg border border-slate-100 p-3">
-              <div className="flex items-center justify-between"><p className="font-medium">{o.id}</p><StatusBadge status={o.status} size="sm" /></div>
-              <p className="text-xs text-slate-500">{o.createdAt}</p>
+              <div className="flex items-center justify-between"><p className="font-medium">{o.orderNumber}</p><StatusBadge status={o.status} size="sm" /></div>
+              <p className="text-xs text-slate-500">{new Date(o.createdAt).toLocaleString()}</p>
               <p className="mt-1 text-sm">PHP {o.total.toLocaleString()}</p>
             </div>
           ))}

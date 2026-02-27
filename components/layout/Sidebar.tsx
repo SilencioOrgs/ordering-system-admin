@@ -13,30 +13,53 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { AdminAvatar } from "@/components/shared/AdminAvatar";
-import { conversations, customOrderRequests, orders } from "@/lib/mockData";
 
 type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
-  badge?: () => number;
+  badge?: number;
 };
 
-const navItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/orders", label: "Orders", icon: ReceiptText, badge: () => orders.filter((o) => o.status === "Pending").length },
-  { href: "/messages", label: "Messages", icon: MessageCircle, badge: () => conversations.reduce((sum, c) => sum + c.unreadCount, 0) },
-  { href: "/custom-orders", label: "Custom Orders", icon: ClipboardList, badge: () => customOrderRequests.filter((c) => c.status === "Pending Review").length },
-  { href: "/products", label: "Products", icon: Package },
-  { href: "/customers", label: "Customers", icon: Users },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+type ApiOrder = { status: string };
 
 export function Sidebar({ isOpen, onClose, isMobile }: { isOpen: boolean; onClose: () => void; isMobile: boolean }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [pendingOrders, setPendingOrders] = useState(0);
+
+  useEffect(() => {
+    void fetch("/api/admin/orders")
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const body = await res.json();
+        return (body.orders ?? []) as ApiOrder[];
+      })
+      .then((orders) => {
+        setPendingOrders(orders.filter((o) => o.status === "Pending").length);
+      })
+      .catch(() => setPendingOrders(0));
+  }, []);
+
+  const navItems: NavItem[] = useMemo(() => ([
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/orders", label: "Orders", icon: ReceiptText, badge: pendingOrders },
+    { href: "/messages", label: "Messages", icon: MessageCircle, badge: 0 },
+    { href: "/custom-orders", label: "Custom Orders", icon: ClipboardList, badge: 0 },
+    { href: "/products", label: "Products", icon: Package },
+    { href: "/customers", label: "Customers", icon: Users },
+    { href: "/settings", label: "Settings", icon: Settings },
+  ]), [pendingOrders]);
+
+  const handleLogout = async () => {
+    await fetch("/api/admin/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <>
@@ -62,7 +85,7 @@ export function Sidebar({ isOpen, onClose, isMobile }: { isOpen: boolean; onClos
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.href;
-            const count = item.badge ? item.badge() : 0;
+            const count = item.badge ?? 0;
             return (
               <Link
                 key={item.href}
@@ -88,6 +111,7 @@ export function Sidebar({ isOpen, onClose, isMobile }: { isOpen: boolean; onClos
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-white">Admin</p>
               <button
+                onClick={handleLogout}
                 className="mt-1 min-h-11 text-sm text-slate-400 transition-colors hover:text-red-400 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
               >
                 <span className="inline-flex items-center gap-1">

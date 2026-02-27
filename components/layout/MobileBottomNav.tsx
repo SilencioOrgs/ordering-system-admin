@@ -3,8 +3,7 @@
 import { LayoutDashboard, MessageCircle, Package, ReceiptText, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-import { conversations, orders } from "@/lib/mockData";
+import { useEffect, useState } from "react";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, dot: false },
@@ -16,8 +15,21 @@ const items = [
 
 export function MobileBottomNav() {
   const pathname = usePathname();
-  const hasOrderAlert = orders.some((order) => order.status === "Pending");
-  const hasMessageAlert = conversations.some((c) => c.unreadCount > 0);
+  const [hasOrderAlert, setHasOrderAlert] = useState(false);
+
+  useEffect(() => {
+    void fetch("/api/admin/orders")
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const body = await res.json();
+        return body.orders ?? [];
+      })
+      .then((orders: Array<{ status: string }>) => {
+        setHasOrderAlert(orders.some((order) => order.status === "Pending"));
+      })
+      .catch(() => setHasOrderAlert(false));
+  }, []);
+  const hasMessageAlert = false;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-100 bg-white pb-safe md:hidden">

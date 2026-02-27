@@ -1,12 +1,41 @@
+"use client";
+
 import { CircleDollarSign, MessageCircle, ShoppingCart, Timer } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { orders } from "@/lib/mockData";
+
+type DashboardOrder = {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  paymentMethod: string;
+  status: "Pending" | "Preparing" | "Out for Delivery" | "Delivered" | "Cancelled";
+  createdAt: string;
+  total: number;
+};
 
 export default function DashboardPage() {
-  const todayOrders = orders.filter((o) => o.createdAt.includes("2026-02-26"));
-  const pendingOrders = orders.filter((o) => o.status === "Pending");
-  const revenue = todayOrders.reduce((sum, order) => sum + order.total, 0);
+  const [orders, setOrders] = useState<DashboardOrder[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/admin/orders")
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const body = await res.json();
+        return (body.orders ?? []) as DashboardOrder[];
+      })
+      .then((items) => setOrders(items))
+      .catch(() => setOrders([]));
+  }, []);
+
+  const { todayOrders, pendingOrders, revenue } = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todays = orders.filter((o) => String(o.createdAt).slice(0, 10) === today);
+    const pending = orders.filter((o) => o.status === "Pending");
+    const rev = todays.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
+    return { todayOrders: todays, pendingOrders: pending, revenue: rev };
+  }, [orders]);
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -51,7 +80,7 @@ export default function DashboardPage() {
               <tbody>
                 {orders.slice(0, 5).map((order) => (
                   <tr key={order.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3 font-medium">{order.id}</td>
+                    <td className="px-4 py-3 font-medium">{order.orderNumber}</td>
                     <td className="px-4 py-3">{order.customerName}</td>
                     <td className="px-4 py-3">PHP {order.total.toLocaleString()}</td>
                     <td className="px-4 py-3 max-lg:hidden">{order.paymentMethod}</td>
@@ -66,7 +95,7 @@ export default function DashboardPage() {
             {orders.slice(0, 5).map((order) => (
               <article key={order.id} className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">{order.id}</span>
+                  <span className="text-xs text-slate-500">{order.orderNumber}</span>
                   <StatusBadge status={order.status} size="sm" />
                 </div>
                 <div className="mt-2 flex items-center justify-between">
@@ -74,7 +103,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-semibold text-emerald-700">PHP {order.total.toLocaleString()}</p>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                  <span>{order.createdAt}</span>
+                  <span>{new Date(order.createdAt).toLocaleString()}</span>
                   <button className="min-h-11 rounded-lg px-3 text-emerald-700">View</button>
                 </div>
               </article>

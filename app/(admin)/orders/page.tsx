@@ -53,7 +53,6 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<TabValue>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
-  const [deliveryMinutesByOrder, setDeliveryMinutesByOrder] = useState<Record<string, string>>({});
 
   const fetchOrders = useCallback(async () => {
     const response = await fetch("/api/admin/orders");
@@ -117,15 +116,14 @@ export default function OrdersPage() {
     async (
       orderId: string,
       status: AdminOrder["status"],
-      extra?: { rejectionReason?: string; deliveryTimeMinutes?: number }
+      extra?: { adminNote?: string }
     ) => {
       const response = await fetch(`/api/admin/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status,
-          rejectionReason: extra?.rejectionReason,
-          deliveryTimeMinutes: extra?.deliveryTimeMinutes,
+          adminNote: extra?.adminNote,
         }),
       });
 
@@ -159,7 +157,7 @@ export default function OrdersPage() {
 
   const handleReject = async (orderId: string, reason: string) => {
     try {
-      await updateOrderStatus(orderId, "Cancelled", { rejectionReason: reason });
+      await updateOrderStatus(orderId, "Cancelled", { adminNote: reason });
       setSelectedOrder(null);
     } catch (error) {
       toast({
@@ -218,47 +216,18 @@ export default function OrdersPage() {
 
     if (order.status === "Out for Delivery") {
       return (
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <input
-            type="number"
-            min={1}
-            placeholder="Minutes"
-            value={deliveryMinutesByOrder[order.id] ?? ""}
-            onChange={(event) =>
-              setDeliveryMinutesByOrder((prev) => ({
-                ...prev,
-                [order.id]: event.target.value,
-              }))
-            }
-            className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm sm:w-24"
-          />
-          <button
-            onClick={() => {
-              const raw = Number(deliveryMinutesByOrder[order.id] ?? 0);
-              if (!Number.isFinite(raw) || raw <= 0) {
-                toast({
-                  type: "warning",
-                  title: "Minutes required",
-                  message: "Enter delivery minutes before marking as delivered.",
-                });
-                return;
-              }
-
-              void updateOrderStatus(order.id, "Delivered", {
-                deliveryTimeMinutes: Math.floor(raw),
-              }).catch((error) => {
-                toast({
-                  type: "error",
-                  title: "Update failed",
-                  message: error instanceof Error ? error.message : "Failed to update status",
-                });
-              });
-            }}
-            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-800"
-          >
-            Mark Delivered
-          </button>
-        </div>
+        <button
+          onClick={() => void updateOrderStatus(order.id, "Delivered").catch((error) => {
+            toast({
+              type: "error",
+              title: "Update failed",
+              message: error instanceof Error ? error.message : "Failed to update status",
+            });
+          })}
+          className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-800"
+        >
+          Mark Delivered
+        </button>
       );
     }
 
@@ -338,11 +307,21 @@ export default function OrdersPage() {
                     })}
                   </p>
                   <p className="mt-1 text-sm font-semibold text-slate-800">
-                    {order.paymentMethod} - {order.paymentStatus}
+                    {order.paymentMethod} - {order.paymentStatus === "Verified" ? "Paid" : order.paymentStatus}
                   </p>
                   <p className="text-lg font-bold text-emerald-700">PHP {order.total.toFixed(2)}</p>
                 </div>
               </div>
+
+              {order.paymentMethod === "COD" ? (
+                <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  Amount to collect on delivery: PHP {order.total.toFixed(2)}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                  {order.paymentMethod} payment is {order.paymentStatus === "Verified" ? "Paid (mock)" : order.paymentStatus}. Total: PHP {order.total.toFixed(2)}
+                </div>
+              )}
 
               <div className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm text-slate-600">
                 {order.items.map((item) => (
@@ -359,9 +338,9 @@ export default function OrdersPage() {
                 <OrderStatusStepper status={order.status} />
               </div>
 
-              {order.status === "Cancelled" && order.rejectionReason && (
+              {order.status === "Cancelled" && (order.adminNote || order.rejectionReason) && (
                 <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
-                  <strong>Reason:</strong> {order.rejectionReason}
+                  <strong>Reason:</strong> {order.adminNote ?? order.rejectionReason}
                 </div>
               )}
 

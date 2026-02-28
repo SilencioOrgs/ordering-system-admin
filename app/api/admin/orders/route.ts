@@ -39,12 +39,7 @@ export async function GET() {
       total,
       status,
       created_at,
-      admin_note,
-      rejection_reason,
-      rated,
-      rating,
-      rating_note,
-      delivery_time_minutes
+      admin_note
     `
     )
     .order("created_at", { ascending: false });
@@ -93,11 +88,11 @@ export async function GET() {
     status: order.status,
     createdAt: order.created_at,
     adminNote: order.admin_note,
-    rejectionReason: order.rejection_reason,
-    rated: Boolean(order.rated),
-    rating: order.rating,
-    ratingNote: order.rating_note,
-    deliveryTimeMinutes: order.delivery_time_minutes,
+    rejectionReason: null,
+    rated: false,
+    rating: null,
+    ratingNote: null,
+    deliveryTimeMinutes: null,
     items: (itemsByOrderId[order.id] ?? []).map((item) => ({
       id: item.id,
       productId: item.product_id,

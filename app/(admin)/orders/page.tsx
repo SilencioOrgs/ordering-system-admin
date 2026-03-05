@@ -80,17 +80,30 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const supabase = createClient();
+    const refreshOrders = () => {
+      void fetchOrders().catch((error: unknown) => {
+        toast({
+          type: "error",
+          title: "Realtime update failed",
+          message: error instanceof Error ? error.message : "Failed to refresh orders",
+        });
+      });
+    };
+
     const channel = supabase
       .channel("admin-orders-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        void fetchOrders();
+        refreshOrders();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, () => {
+        refreshOrders();
       })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [fetchOrders]);
+  }, [fetchOrders, toast]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {

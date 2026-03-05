@@ -1,12 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Map, { Marker, NavigationControl } from "react-map-gl/mapbox";
-import { CheckCircle2, MapPin, X, XCircle } from "lucide-react";
-import "mapbox-gl/dist/mapbox-gl.css";
-
-const STORE_LAT = 14.5547;
-const STORE_LNG = 121.0223;
+import { CheckCircle2, MapPin, ExternalLink, X, XCircle } from "lucide-react";
 
 interface OrderApprovalMapProps {
   order: {
@@ -27,20 +22,24 @@ interface OrderApprovalMapProps {
 export default function OrderApprovalMap({ order, onApprove, onReject, onClose }: OrderApprovalMapProps) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_API_KEY;
   const hasCoordinates = order.deliveryLat !== null && order.deliveryLng !== null;
 
-  const distanceKm = useMemo(() => {
-    if (!hasCoordinates) return null;
+  const mapQuery = useMemo(() => {
+    if (hasCoordinates) {
+      return `${order.deliveryLat},${order.deliveryLng}`;
+    }
+    return order.deliveryAddress ?? "";
+  }, [hasCoordinates, order.deliveryAddress, order.deliveryLat, order.deliveryLng]);
 
-    const lat1 = (STORE_LAT * Math.PI) / 180;
-    const lat2 = ((order.deliveryLat as number) * Math.PI) / 180;
-    const dLat = lat2 - lat1;
-    const dLng = (((order.deliveryLng as number) - STORE_LNG) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Number((6371 * c).toFixed(1));
-  }, [hasCoordinates, order.deliveryLat, order.deliveryLng]);
+  const googleEmbedUrl = useMemo(() => {
+    if (!mapQuery.trim()) return null;
+    return `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=16&output=embed`;
+  }, [mapQuery]);
+
+  const googleOpenUrl = useMemo(() => {
+    if (!mapQuery.trim()) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+  }, [mapQuery]);
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
@@ -59,60 +58,61 @@ export default function OrderApprovalMap({ order, onApprove, onReject, onClose }
         </div>
 
         <div className="relative h-64 bg-slate-100">
-          {mapboxToken && hasCoordinates ? (
-            <Map
-              initialViewState={{
-                longitude: (STORE_LNG + (order.deliveryLng as number)) / 2,
-                latitude: (STORE_LAT + (order.deliveryLat as number)) / 2,
-                zoom: 11,
-              }}
-              mapboxAccessToken={mapboxToken}
-              mapStyle="mapbox://styles/mapbox/streets-v12"
-              style={{ width: "100%", height: "100%" }}
-            >
-              <Marker longitude={STORE_LNG} latitude={STORE_LAT} anchor="bottom">
-                <div className="flex flex-col items-center">
-                  <div className="mb-1 rounded-md bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white">Store</div>
-                  <MapPin className="h-8 w-8 fill-emerald-100 text-emerald-700" />
-                </div>
-              </Marker>
-              <Marker longitude={order.deliveryLng as number} latitude={order.deliveryLat as number} anchor="bottom">
-                <div className="flex flex-col items-center">
-                  <div className="mb-1 rounded-md bg-red-600 px-2 py-1 text-[10px] font-bold text-white">Customer</div>
-                  <MapPin className="h-8 w-8 fill-red-100 text-red-600" />
-                </div>
-              </Marker>
-              <NavigationControl position="top-right" />
-            </Map>
+          {googleEmbedUrl ? (
+            <iframe
+              title={`Delivery map for order ${order.orderNumber}`}
+              src={googleEmbedUrl}
+              className="h-full w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">
-              {!hasCoordinates ? "Customer did not pin location." : "Mapbox key not configured."}
+              No map location available for this order.
             </div>
           )}
         </div>
 
         <div className="border-b border-slate-100 bg-slate-50 px-6 py-4">
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+              <MapPin className="h-3.5 w-3.5 text-emerald-600" />
+              Google Maps Address Review
+            </div>
+            {googleOpenUrl && (
+              <a
+                href={googleOpenUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Open
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-left">
             <div>
               <p className="text-xs font-medium text-slate-400">Address</p>
               <p className="mt-0.5 line-clamp-2 text-sm font-semibold text-slate-800">{order.deliveryAddress ?? "Not provided"}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-400">Distance</p>
-              <p className={`mt-0.5 text-sm font-bold ${distanceKm !== null && distanceKm > 10 ? "text-red-500" : "text-emerald-600"}`}>
-                {distanceKm !== null ? `~${distanceKm} km` : "-"}
+              <p className="text-xs font-medium text-slate-400">Coordinates</p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-800">
+                {hasCoordinates ? `${order.deliveryLat}, ${order.deliveryLng}` : "Not pinned"}
               </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-400">Customer</p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-800">{order.customerName}</p>
+              <p className="text-xs text-slate-500">{order.customerPhone}</p>
             </div>
             <div>
               <p className="text-xs font-medium text-slate-400">Total</p>
               <p className="mt-0.5 text-sm font-bold text-slate-800">PHP {order.total.toFixed(2)}</p>
             </div>
           </div>
-          {distanceKm !== null && distanceKm > 10 && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-              Customer is more than 10 km away. Check if delivery is feasible.
-            </div>
-          )}
         </div>
 
         <div className="space-y-3 px-6 py-4">

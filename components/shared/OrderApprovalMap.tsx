@@ -22,6 +22,7 @@ interface OrderApprovalMapProps {
 export default function OrderApprovalMap({ order, onApprove, onReject, onClose }: OrderApprovalMapProps) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
   const hasCoordinates = order.deliveryLat !== null && order.deliveryLng !== null;
 
   const mapQuery = useMemo(() => {
@@ -31,14 +32,17 @@ export default function OrderApprovalMap({ order, onApprove, onReject, onClose }
     return order.deliveryAddress ?? "";
   }, [hasCoordinates, order.deliveryAddress, order.deliveryLat, order.deliveryLng]);
 
-  const googleEmbedUrl = useMemo(() => {
-    if (!mapQuery.trim()) return null;
-    return `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=16&output=embed`;
-  }, [mapQuery]);
+  const mapboxStaticUrl = useMemo(() => {
+    if (!mapboxToken || !hasCoordinates) return null;
+    const lng = Number(order.deliveryLng);
+    const lat = Number(order.deliveryLat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s+047857(${lng},${lat})/${lng},${lat},15/1000x500?access_token=${mapboxToken}`;
+  }, [hasCoordinates, mapboxToken, order.deliveryLat, order.deliveryLng]);
 
-  const googleOpenUrl = useMemo(() => {
+  const mapboxOpenUrl = useMemo(() => {
     if (!mapQuery.trim()) return null;
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+    return `https://www.mapbox.com/search?query=${encodeURIComponent(mapQuery)}`;
   }, [mapQuery]);
 
   return (
@@ -58,17 +62,16 @@ export default function OrderApprovalMap({ order, onApprove, onReject, onClose }
         </div>
 
         <div className="relative h-64 bg-slate-100">
-          {googleEmbedUrl ? (
-            <iframe
-              title={`Delivery map for order ${order.orderNumber}`}
-              src={googleEmbedUrl}
-              className="h-full w-full border-0"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
+          {mapboxStaticUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={mapboxStaticUrl}
+              alt={`Delivery map for order ${order.orderNumber}`}
+              className="h-full w-full object-cover"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">
-              No map location available for this order.
+              {hasCoordinates ? "Map preview unavailable. Check Mapbox token." : "No pinned map location available for this order."}
             </div>
           )}
         </div>
@@ -77,11 +80,11 @@ export default function OrderApprovalMap({ order, onApprove, onReject, onClose }
           <div className="mb-3 flex items-center justify-between">
             <div className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
               <MapPin className="h-3.5 w-3.5 text-emerald-600" />
-              Google Maps Address Review
+              Mapbox Address Review
             </div>
-            {googleOpenUrl && (
+            {mapboxOpenUrl && (
               <a
-                href={googleOpenUrl}
+                href={mapboxOpenUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"

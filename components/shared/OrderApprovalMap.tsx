@@ -22,7 +22,7 @@ interface OrderApprovalMapProps {
 export default function OrderApprovalMap({ order, onApprove, onReject, onClose }: OrderApprovalMapProps) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_API_KEY ?? "";
   const hasCoordinates = order.deliveryLat !== null && order.deliveryLng !== null;
 
   const mapQuery = useMemo(() => {

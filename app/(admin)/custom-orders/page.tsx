@@ -28,6 +28,8 @@ interface CustomOrderQuote {
   deliveryDate: string | null;
   notes: string | null;
   status: QuoteStatus;
+  quotePhase: "blank_from_admin" | "filled_by_customer" | "priced_by_admin";
+  customerSubmittedAt: string | null;
   createdAt: string;
 }
 
@@ -87,11 +89,8 @@ export default function CustomOrdersPage() {
   const [openQuoteForm, setOpenQuoteForm] = useState(true);
 
   const [quoteTitle, setQuoteTitle] = useState("Custom Order Quote");
-  const [quoteDescription, setQuoteDescription] = useState("");
-  const [quoteQuantity, setQuoteQuantity] = useState("1");
-  const [quoteUnitPrice, setQuoteUnitPrice] = useState("");
-  const [quoteDeliveryDate, setQuoteDeliveryDate] = useState("");
   const [quoteNotes, setQuoteNotes] = useState("");
+  const [quoteUnitPrice, setQuoteUnitPrice] = useState("");
 
   const selected = requests.find((request) => request.id === selectedId) ?? null;
 
@@ -241,7 +240,7 @@ export default function CustomOrdersPage() {
     }
   };
 
-  const sendQuotation = async () => {
+  const sendBlankQuotation = async () => {
     if (!selected) return;
 
     setSendingQuote(true);
@@ -251,11 +250,8 @@ export default function CustomOrdersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           quote: {
+            action: "send_blank",
             title: quoteTitle,
-            itemDescription: quoteDescription,
-            quantity: Number(quoteQuantity),
-            unitPrice: Number(quoteUnitPrice),
-            deliveryDate: quoteDeliveryDate || null,
             notes: quoteNotes || null,
           },
         }),
@@ -264,7 +260,63 @@ export default function CustomOrdersPage() {
       const createdQuote = body.quote;
 
       if (!response.ok || !createdQuote) {
-        throw new Error(body.error ?? "Failed to send quotation");
+        throw new Error(body.error ?? "Failed to send blank quotation");
+      }
+
+      setRequests((previous) =>
+        previous.map((request) =>
+          request.id === selected.id
+            ? {
+                ...request,
+                latestQuote: createdQuote,
+                quotes: [createdQuote, ...request.quotes],
+              }
+            : request
+        )
+      );
+
+      toast({ type: "success", title: "Blank quote sent" });
+      setQuoteNotes("");
+      void fetchRequests();
+    } catch (error) {
+      toast({
+        type: "error",
+        title: "Quotation failed",
+        message: error instanceof Error ? error.message : "Failed to send blank quotation",
+      });
+    } finally {
+      setSendingQuote(false);
+    }
+  };
+
+  const setPriceQuotation = async () => {
+    if (!selected || !selected.latestQuote) return;
+
+    const parsedPrice = Number(quoteUnitPrice);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      toast({ type: "error", title: "Invalid price", message: "Enter a valid unit price." });
+      return;
+    }
+
+    setSendingQuote(true);
+    try {
+      const response = await fetch(`/api/admin/custom-orders/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quote: {
+            action: "set_price",
+            quoteId: selected.latestQuote.id,
+            unitPrice: parsedPrice,
+            notes: quoteNotes || null,
+          },
+        }),
+      });
+      const body = (await response.json()) as DetailResponse;
+      const updatedQuote = body.quote;
+
+      if (!response.ok || !updatedQuote) {
+        throw new Error(body.error ?? "Failed to set quotation price");
       }
 
       setRequests((previous) =>
@@ -273,25 +325,22 @@ export default function CustomOrdersPage() {
             ? {
                 ...request,
                 status: "Quoted",
-                latestQuote: createdQuote,
-                quotes: [createdQuote, ...request.quotes],
+                latestQuote: updatedQuote,
+                quotes: request.quotes.map((quote) => (quote.id === updatedQuote.id ? updatedQuote : quote)),
               }
             : request
         )
       );
 
-      toast({ type: "success", title: "Quotation sent" });
-      setQuoteDescription("");
-      setQuoteQuantity("1");
+      toast({ type: "success", title: "Price sent to customer" });
       setQuoteUnitPrice("");
-      setQuoteDeliveryDate("");
       setQuoteNotes("");
       void fetchRequests();
     } catch (error) {
       toast({
         type: "error",
-        title: "Quotation failed",
-        message: error instanceof Error ? error.message : "Failed to send quotation",
+        title: "Pricing failed",
+        message: error instanceof Error ? error.message : "Failed to set quotation price",
       });
     } finally {
       setSendingQuote(false);
@@ -420,18 +469,23 @@ export default function CustomOrdersPage() {
               {selected.quotes.length > 0 && (
                 <div className="mb-4 space-y-3">
                   {selected.quotes.map((quote) => (
-                    <div key={quote.id} className="rounded-xl border border-emerald-100 bg-white p-3">
+                    <div key={quote.id} className="rounded-lg border border-emerald-100 bg-white p-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-bold text-slate-900">{quote.title}</p>
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-900">{quote.title}</p>
                         <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${quote.status === "Accepted" ? "bg-emerald-100 text-emerald-700" : quote.status === "Sent" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
                           {quote.status}
                         </span>
                       </div>
-                      <p className="mt-1 text-sm text-slate-700">{quote.itemDescription}</p>
-                      <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-600">
+                      <p className="mt-1 text-xs text-slate-600">
+                        {quote.quotePhase === "blank_from_admin" && "Waiting for customer details"}
+                        {quote.quotePhase === "filled_by_customer" && "Customer submitted details. Set price next."}
+                        {quote.quotePhase === "priced_by_admin" && "Price sent to customer"}
+                      </p>
+                      {quote.itemDescription && <p className="mt-1 text-xs text-slate-700">{quote.itemDescription}</p>}
+                      <div className="mt-1 grid grid-cols-2 gap-1 text-[11px] text-slate-600">
                         <p>Qty: <span className="font-semibold text-slate-900">{quote.quantity}</span></p>
-                        <p>Unit: <span className="font-semibold text-slate-900">{formatPeso(quote.unitPrice)}</span></p>
-                        <p className="col-span-2">Total: <span className="font-bold text-emerald-700">{formatPeso(quote.quotedTotal)}</span></p>
+                        <p>Unit: <span className="font-semibold text-slate-900">{quote.unitPrice > 0 ? formatPeso(quote.unitPrice) : "Not set"}</span></p>
+                        {quote.unitPrice > 0 && <p className="col-span-2">Total: <span className="font-bold text-emerald-700">{formatPeso(quote.quotedTotal)}</span></p>}
                         {quote.deliveryDate && <p className="col-span-2">Target date: <span className="font-semibold text-slate-900">{quote.deliveryDate}</span></p>}
                       </div>
                       {quote.notes && <p className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">{quote.notes}</p>}
@@ -462,62 +516,19 @@ export default function CustomOrdersPage() {
                   onClick={() => setOpenQuoteForm((prev) => !prev)}
                   className="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left"
                 >
-                  <span className="text-sm font-semibold text-slate-800">Create Quotation Card</span>
+                  <span className="text-sm font-semibold text-slate-800">Quotation Workflow</span>
                   {openQuoteForm ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
                 </button>
                 {openQuoteForm && (
                   <div className="border-t border-slate-100 p-3">
                     <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1: Send Blank Card</p>
                       <label className="block">
                         <span className="mb-1 block text-xs font-semibold text-slate-600">Title</span>
                         <input
                           value={quoteTitle}
                           onChange={(event) => setQuoteTitle(event.target.value)}
-                          className="h-11 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
-                        />
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-semibold text-slate-600">Item Description</span>
-                        <textarea
-                          value={quoteDescription}
-                          onChange={(event) => setQuoteDescription(event.target.value)}
-                          className="min-h-20 w-full rounded-lg border border-slate-200 p-3 text-[16px]"
-                        />
-                      </label>
-
-                      <div className="grid gap-2 md:grid-cols-2">
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-semibold text-slate-600">Quantity</span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={quoteQuantity}
-                            onChange={(event) => setQuoteQuantity(event.target.value)}
-                            className="h-11 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-semibold text-slate-600">Unit Price (PHP)</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={quoteUnitPrice}
-                            onChange={(event) => setQuoteUnitPrice(event.target.value)}
-                            className="h-11 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
-                          />
-                        </label>
-                      </div>
-
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-semibold text-slate-600">Delivery Date</span>
-                        <input
-                          type="date"
-                          value={quoteDeliveryDate}
-                          onChange={(event) => setQuoteDeliveryDate(event.target.value)}
-                          className="h-11 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+                          className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
                         />
                       </label>
 
@@ -526,17 +537,44 @@ export default function CustomOrdersPage() {
                         <textarea
                           value={quoteNotes}
                           onChange={(event) => setQuoteNotes(event.target.value)}
-                          className="min-h-16 w-full rounded-lg border border-slate-200 p-3 text-[16px]"
+                          className="min-h-16 w-full rounded-md border border-slate-200 p-2.5 text-sm"
                         />
                       </label>
 
                       <button
-                        onClick={() => void sendQuotation()}
+                        onClick={() => void sendBlankQuotation()}
                         disabled={sendingQuote}
-                        className="min-h-11 w-full rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="min-h-10 w-full rounded-md bg-emerald-700 px-4 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {sendingQuote ? "Sending quotation..." : "Send Quotation"}
+                        {sendingQuote ? "Sending..." : "Send Blank Quote Card"}
                       </button>
+
+                      {selected.latestQuote?.quotePhase === "filled_by_customer" && (
+                        <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Step 2: Set Price</p>
+                          <p className="text-xs text-slate-700">{selected.latestQuote.itemDescription}</p>
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                            <p>Qty: <span className="font-semibold text-slate-900">{selected.latestQuote.quantity}</span></p>
+                            {selected.latestQuote.deliveryDate && <p>Date: <span className="font-semibold text-slate-900">{selected.latestQuote.deliveryDate}</span></p>}
+                          </div>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={quoteUnitPrice}
+                            onChange={(event) => setQuoteUnitPrice(event.target.value)}
+                            placeholder="Unit Price (PHP)"
+                            className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                          />
+                          <button
+                            onClick={() => void setPriceQuotation()}
+                            disabled={sendingQuote || !quoteUnitPrice.trim()}
+                            className="min-h-10 w-full rounded-md bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {sendingQuote ? "Sending..." : "Set Price & Send to Customer"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

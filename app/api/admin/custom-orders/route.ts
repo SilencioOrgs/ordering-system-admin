@@ -32,11 +32,13 @@ type QuoteRow = {
   title: string;
   item_description: string;
   quantity: number;
-  unit_price: number | string;
+  unit_price: number | string | null;
   quoted_total: number | string;
   delivery_date: string | null;
   notes: string | null;
   status: "Sent" | "Accepted" | "Declined" | "Superseded";
+  quote_phase: "blank_from_admin" | "filled_by_customer" | "priced_by_admin";
+  customer_submitted_at: string | null;
   created_at: string;
 };
 
@@ -81,7 +83,7 @@ export async function GET() {
       .order("created_at", { ascending: false }),
     supabase
       .from("custom_order_quotes")
-      .select("id, thread_id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, created_at")
+      .select("id, thread_id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, quote_phase, customer_submitted_at, created_at")
       .in("thread_id", threadIds)
       .order("created_at", { ascending: false }),
   ]);
@@ -152,6 +154,8 @@ export async function GET() {
             deliveryDate: latestQuote.delivery_date,
             notes: latestQuote.notes,
             status: latestQuote.status,
+            quotePhase: latestQuote.quote_phase,
+            customerSubmittedAt: latestQuote.customer_submitted_at,
             createdAt: latestQuote.created_at,
           }
         : null,

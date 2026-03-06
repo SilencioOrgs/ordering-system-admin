@@ -74,6 +74,7 @@ export async function GET() {
 
   const profileById = new Map<string, ProfileRow>((profiles ?? []).map((profile) => [profile.id, profile as ProfileRow]));
   const messagesByThread = new Map<string, MessageRow[]>();
+  const threadsByCustomer = new Map<string, ThreadRow[]>();
 
   for (const message of (messages ?? []) as MessageRow[]) {
     const existing = messagesByThread.get(message.thread_id) ?? [];
@@ -81,36 +82,79 @@ export async function GET() {
     messagesByThread.set(message.thread_id, existing);
   }
 
-  const payload = typedThreads.map((thread) => {
-    const profile = profileById.get(thread.customer_user_id);
-    const threadMessages = messagesByThread.get(thread.id) ?? [];
-    const latest = threadMessages[0] ?? null;
-    const unreadCount = threadMessages.filter(
-      (message) => message.sender_role === "customer" && message.read_at === null
-    ).length;
+  for (const thread of typedThreads) {
+    const existing = threadsByCustomer.get(thread.customer_user_id) ?? [];
+    existing.push(thread);
+    threadsByCustomer.set(thread.customer_user_id, existing);
+  }
 
-    return {
-      id: thread.id,
-      customer: {
-        id: thread.customer_user_id,
-        name: profile?.full_name ?? "Customer",
-        phone: profile?.phone ?? "",
-      },
-      status: thread.status,
-      unreadCount,
-      messages: latest
-        ? [
-            {
-              id: latest.id,
-              role: latest.sender_role === "customer" ? "customer" : "admin",
-              content: latest.body,
-              timestamp: formatTimestamp(latest.created_at),
-            },
-          ]
-        : [],
-      updatedAt: thread.updated_at,
-    };
-  });
+  const payload = Array.from(threadsByCustomer.entries())
+    .map(([customerId, customerThreads]) => {
+      const profile = profileById.get(customerId);
+
+      let primaryThread = customerThreads[0];
+      let latestMessage: MessageRow | null = null;
+      let unreadCount = 0;
+      let hasOpenThread = false;
+      let latestActivityAt = new Date(primaryThread.updated_at).getTime();
+
+      for (const thread of customerThreads) {
+        if (thread.status === "open") hasOpenThread = true;
+
+        const threadMessages = messagesByThread.get(thread.id) ?? [];
+        unreadCount += threadMessages.filter(
+          (message) => message.sender_role === "customer" && message.read_at === null
+        ).length;
+
+        const threadLatestMessage = threadMessages[0] ?? null;
+        if (
+          threadLatestMessage &&
+          (!latestMessage || +new Date(threadLatestMessage.created_at) > +new Date(latestMessage.created_at))
+        ) {
+          latestMessage = threadLatestMessage;
+        }
+
+        const threadActivityAt = threadLatestMessage
+          ? +new Date(threadLatestMessage.created_at)
+          : +new Date(thread.updated_at);
+
+        if (threadActivityAt > latestActivityAt) {
+          latestActivityAt = threadActivityAt;
+          primaryThread = thread;
+        }
+      }
+
+      if (latestMessage) {
+        const threadWithLatestMessage = customerThreads.find((thread) => thread.id === latestMessage?.thread_id);
+        if (threadWithLatestMessage) {
+          primaryThread = threadWithLatestMessage;
+          latestActivityAt = +new Date(latestMessage.created_at);
+        }
+      }
+
+      return {
+        id: primaryThread.id,
+        customer: {
+          id: customerId,
+          name: profile?.full_name ?? "Customer",
+          phone: profile?.phone ?? "",
+        },
+        status: hasOpenThread ? "open" : "resolved",
+        unreadCount,
+        messages: latestMessage
+          ? [
+              {
+                id: latestMessage.id,
+                role: latestMessage.sender_role === "customer" ? "customer" : "admin",
+                content: latestMessage.body,
+                timestamp: formatTimestamp(latestMessage.created_at),
+              },
+            ]
+          : [],
+        updatedAt: new Date(latestActivityAt).toISOString(),
+      };
+    })
+    .sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
 
   return NextResponse.json({ conversations: payload });
 }

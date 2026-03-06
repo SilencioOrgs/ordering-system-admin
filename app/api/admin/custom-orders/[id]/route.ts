@@ -26,11 +26,13 @@ type QuoteRow = {
   title: string;
   item_description: string;
   quantity: number;
-  unit_price: number | string;
+  unit_price: number | string | null;
   quoted_total: number | string;
   delivery_date: string | null;
   notes: string | null;
   status: "Sent" | "Accepted" | "Declined" | "Superseded";
+  quote_phase: "blank_from_admin" | "filled_by_customer" | "priced_by_admin";
+  customer_submitted_at: string | null;
   created_at: string;
 };
 
@@ -76,7 +78,7 @@ export async function GET(_req: Request, { params }: Params) {
       .order("created_at", { ascending: true }),
     supabase
       .from("custom_order_quotes")
-      .select("id, thread_id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, created_at")
+      .select("id, thread_id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, quote_phase, customer_submitted_at, created_at")
       .eq("thread_id", id)
       .order("created_at", { ascending: false }),
   ]);
@@ -118,6 +120,8 @@ export async function GET(_req: Request, { params }: Params) {
         deliveryDate: quote.delivery_date,
         notes: quote.notes,
         status: quote.status,
+        quotePhase: quote.quote_phase,
+        customerSubmittedAt: quote.customer_submitted_at,
         createdAt: quote.created_at,
       })),
       updatedAt: thread.updated_at,
@@ -177,6 +181,8 @@ export async function POST(req: Request, { params }: Params) {
 }
 
 type QuoteInput = {
+  action?: "send_blank" | "set_price";
+  quoteId?: string;
   title?: string;
   itemDescription?: string;
   quantity?: number;
@@ -201,64 +207,145 @@ export async function PATCH(req: Request, { params }: Params) {
   const supabase = createServiceClient();
 
   if (body.quote) {
-    const quantity = Number(body.quote.quantity);
-    const unitPrice = Number(body.quote.unitPrice);
-    const itemDescription = body.quote.itemDescription?.trim();
+    const action = body.quote.action ?? "send_blank";
 
-    if (!itemDescription || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
-      return NextResponse.json({ error: "Complete quotation fields first" }, { status: 400 });
-    }
+    if (action === "send_blank") {
+      const { data: insertedQuote, error: insertQuoteError } = await supabase
+        .from("custom_order_quotes")
+        .insert({
+          thread_id: id,
+          created_by_admin_id: session.admin_id,
+          title: body.quote.title?.trim() || "Custom Order Quote",
+          item_description: "",
+          quantity: 1,
+          unit_price: null,
+          delivery_date: null,
+          notes: body.quote.notes?.trim() || null,
+          status: "Sent",
+          quote_phase: "blank_from_admin",
+        })
+        .select("id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, quote_phase, customer_submitted_at, created_at")
+        .single();
 
-    const { data: insertedQuote, error: insertQuoteError } = await supabase
-      .from("custom_order_quotes")
-      .insert({
+      if (insertQuoteError || !insertedQuote) {
+        return NextResponse.json({ error: insertQuoteError?.message ?? "Failed to send blank quotation" }, { status: 500 });
+      }
+
+      await supabase
+        .from("custom_order_quotes")
+        .update({ status: "Superseded" })
+        .eq("thread_id", id)
+        .neq("id", insertedQuote.id)
+        .in("status", ["Sent", "Accepted"]);
+
+      await supabase
+        .from("custom_order_threads")
+        .update({
+          status: "Pending Review",
+          accepted_quote_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      await supabase.from("custom_order_messages").insert({
         thread_id: id,
-        created_by_admin_id: session.admin_id,
-        title: body.quote.title?.trim() || "Custom Order Quote",
-        item_description: itemDescription,
-        quantity: Math.floor(quantity),
-        unit_price: unitPrice,
-        delivery_date: body.quote.deliveryDate || null,
-        notes: body.quote.notes?.trim() || null,
-        status: "Sent",
-      })
-      .select("id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, created_at")
-      .single();
+        sender_role: "admin",
+        sender_admin_id: session.admin_id,
+        body: "I sent a blank quotation card. Please fill your custom order details.",
+      });
 
-    if (insertQuoteError || !insertedQuote) {
-      return NextResponse.json({ error: insertQuoteError?.message ?? "Failed to send quotation" }, { status: 500 });
+      return NextResponse.json({
+        quote: {
+          id: insertedQuote.id,
+          title: insertedQuote.title,
+          itemDescription: insertedQuote.item_description,
+          quantity: Number(insertedQuote.quantity ?? 0),
+          unitPrice: Number(insertedQuote.unit_price ?? 0),
+          quotedTotal: Number(insertedQuote.quoted_total ?? 0),
+          deliveryDate: insertedQuote.delivery_date,
+          notes: insertedQuote.notes,
+          status: insertedQuote.status,
+          quotePhase: insertedQuote.quote_phase,
+          customerSubmittedAt: insertedQuote.customer_submitted_at,
+          createdAt: insertedQuote.created_at,
+        },
+      });
     }
 
-    await supabase
-      .from("custom_order_quotes")
-      .update({ status: "Superseded" })
-      .eq("thread_id", id)
-      .neq("id", insertedQuote.id)
-      .in("status", ["Sent", "Accepted"]);
+    if (action === "set_price") {
+      const quoteId = body.quote.quoteId?.trim();
+      const unitPrice = Number(body.quote.unitPrice);
+      if (!quoteId || !Number.isFinite(unitPrice) || unitPrice < 0) {
+        return NextResponse.json({ error: "Quote ID and valid price are required" }, { status: 400 });
+      }
 
-    await supabase
-      .from("custom_order_threads")
-      .update({
-        status: "Quoted",
-        accepted_quote_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+      const { data: quote, error: quoteError } = await supabase
+        .from("custom_order_quotes")
+        .select("id, thread_id, item_description, quantity, title, delivery_date, notes, quote_phase")
+        .eq("id", quoteId)
+        .eq("thread_id", id)
+        .single();
 
-    return NextResponse.json({
-      quote: {
-        id: insertedQuote.id,
-        title: insertedQuote.title,
-        itemDescription: insertedQuote.item_description,
-        quantity: Number(insertedQuote.quantity ?? 0),
-        unitPrice: Number(insertedQuote.unit_price ?? 0),
-        quotedTotal: Number(insertedQuote.quoted_total ?? 0),
-        deliveryDate: insertedQuote.delivery_date,
-        notes: insertedQuote.notes,
-        status: insertedQuote.status,
-        createdAt: insertedQuote.created_at,
-      },
-    });
+      if (quoteError || !quote) {
+        return NextResponse.json({ error: quoteError?.message ?? "Quotation not found" }, { status: 404 });
+      }
+
+      if (!quote.item_description || Number(quote.quantity) <= 0) {
+        return NextResponse.json({ error: "Customer details are still incomplete" }, { status: 400 });
+      }
+
+      const { data: updatedQuote, error: updateQuoteError } = await supabase
+        .from("custom_order_quotes")
+        .update({
+          unit_price: unitPrice,
+          status: "Sent",
+          quote_phase: "priced_by_admin",
+          notes: body.quote.notes?.trim() || quote.notes || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", quoteId)
+        .select("id, title, item_description, quantity, unit_price, quoted_total, delivery_date, notes, status, quote_phase, customer_submitted_at, created_at")
+        .single();
+
+      if (updateQuoteError || !updatedQuote) {
+        return NextResponse.json({ error: updateQuoteError?.message ?? "Failed to set quotation price" }, { status: 500 });
+      }
+
+      await supabase
+        .from("custom_order_threads")
+        .update({
+          status: "Quoted",
+          accepted_quote_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      await supabase.from("custom_order_messages").insert({
+        thread_id: id,
+        sender_role: "admin",
+        sender_admin_id: session.admin_id,
+        body: "I updated your quotation with price. Please review it.",
+      });
+
+      return NextResponse.json({
+        quote: {
+          id: updatedQuote.id,
+          title: updatedQuote.title,
+          itemDescription: updatedQuote.item_description,
+          quantity: Number(updatedQuote.quantity ?? 0),
+          unitPrice: Number(updatedQuote.unit_price ?? 0),
+          quotedTotal: Number(updatedQuote.quoted_total ?? 0),
+          deliveryDate: updatedQuote.delivery_date,
+          notes: updatedQuote.notes,
+          status: updatedQuote.status,
+          quotePhase: updatedQuote.quote_phase,
+          customerSubmittedAt: updatedQuote.customer_submitted_at,
+          createdAt: updatedQuote.created_at,
+        },
+      });
+    }
+
+    return NextResponse.json({ error: "Invalid quotation action" }, { status: 400 });
   }
 
   if (body.status && ["Pending Review", "Quoted", "Confirmed", "Rejected"].includes(body.status)) {

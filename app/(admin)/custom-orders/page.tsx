@@ -86,9 +86,7 @@ export default function CustomOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sendingQuote, setSendingQuote] = useState(false);
-  const [openQuoteForm, setOpenQuoteForm] = useState(true);
-
-  const [quoteTitle, setQuoteTitle] = useState("Custom Order Quote");
+  const [openQuoteForm, setOpenQuoteForm] = useState(false);
   const [quoteNotes, setQuoteNotes] = useState("");
   const [quoteUnitPrice, setQuoteUnitPrice] = useState("");
 
@@ -251,8 +249,8 @@ export default function CustomOrdersPage() {
         body: JSON.stringify({
           quote: {
             action: "send_blank",
-            title: quoteTitle,
-            notes: quoteNotes || null,
+            title: "Custom Order Quote",
+            notes: null,
           },
         }),
       });
@@ -276,7 +274,6 @@ export default function CustomOrdersPage() {
       );
 
       toast({ type: "success", title: "Blank quote sent" });
-      setQuoteNotes("");
       void fetchRequests();
     } catch (error) {
       toast({
@@ -522,31 +519,17 @@ export default function CustomOrdersPage() {
                 {openQuoteForm && (
                   <div className="border-t border-slate-100 p-3">
                     <div className="space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1: Send Blank Card</p>
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-semibold text-slate-600">Title</span>
-                        <input
-                          value={quoteTitle}
-                          onChange={(event) => setQuoteTitle(event.target.value)}
-                          className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                        />
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-semibold text-slate-600">Notes</span>
-                        <textarea
-                          value={quoteNotes}
-                          onChange={(event) => setQuoteNotes(event.target.value)}
-                          className="min-h-16 w-full rounded-md border border-slate-200 p-2.5 text-sm"
-                        />
-                      </label>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <p className="font-semibold">Please fill up the form for custom order.</p>
+                        <p className="mt-1 text-amber-800">Once done, Ate Ai will send the price.</p>
+                      </div>
 
                       <button
                         onClick={() => void sendBlankQuotation()}
                         disabled={sendingQuote}
                         className="min-h-10 w-full rounded-md bg-emerald-700 px-4 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {sendingQuote ? "Sending..." : "Send Blank Quote Card"}
+                        {sendingQuote ? "Sending..." : "Send Custom Order Form"}
                       </button>
 
                       {selected.latestQuote?.quotePhase === "filled_by_customer" && (
@@ -555,17 +538,29 @@ export default function CustomOrdersPage() {
                           <p className="text-xs text-slate-700">{selected.latestQuote.itemDescription}</p>
                           <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
                             <p>Qty: <span className="font-semibold text-slate-900">{selected.latestQuote.quantity}</span></p>
-                            {selected.latestQuote.deliveryDate && <p>Date: <span className="font-semibold text-slate-900">{selected.latestQuote.deliveryDate}</span></p>}
+                            {selected.latestQuote.deliveryDate && <p>Preferred date: <span className="font-semibold text-slate-900">{selected.latestQuote.deliveryDate}</span></p>}
                           </div>
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={quoteUnitPrice}
-                            onChange={(event) => setQuoteUnitPrice(event.target.value)}
-                            placeholder="Unit Price (PHP)"
-                            className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
-                          />
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-semibold text-slate-600">Unit Price (PHP)</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={quoteUnitPrice}
+                              onChange={(event) => setQuoteUnitPrice(event.target.value)}
+                              placeholder="Unit Price (PHP)"
+                              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-semibold text-slate-600">Reply Note (Optional)</span>
+                            <textarea
+                              value={quoteNotes}
+                              onChange={(event) => setQuoteNotes(event.target.value)}
+                              placeholder="Add an optional note for the customer"
+                              className="min-h-16 w-full rounded-md border border-slate-200 p-2.5 text-sm"
+                            />
+                          </label>
                           <button
                             onClick={() => void setPriceQuotation()}
                             disabled={sendingQuote || !quoteUnitPrice.trim()}

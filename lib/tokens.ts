@@ -15,6 +15,8 @@ export const tokens = {
   },
   statusColors: {
     Pending: { bg: "#fef9c3", text: "#854d0e", dot: "#ca8a04" },
+    "Awaiting Verification": { bg: "#ffedd5", text: "#9a3412", dot: "#f97316" },
+    Verified: { bg: "#d1fae5", text: "#065f46", dot: "#10b981" },
     Preparing: { bg: "#dbeafe", text: "#1e40af", dot: "#3b82f6" },
     "Out for Delivery": { bg: "#ede9fe", text: "#5b21b6", dot: "#8b5cf6" },
     Delivered: { bg: "#d1fae5", text: "#065f46", dot: "#10b981" },

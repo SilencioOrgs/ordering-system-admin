@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, MapPin, ExternalLink, X, XCircle } from "lucide-react";
+import { CheckCircle2, ClipboardCopy, ExternalLink, MapPin, X, XCircle } from "lucide-react";
 
 interface OrderApprovalMapProps {
   order: {
@@ -22,6 +22,7 @@ interface OrderApprovalMapProps {
 export default function OrderApprovalMap({ order, onApprove, onReject, onClose }: OrderApprovalMapProps) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
+  const [copyLabel, setCopyLabel] = useState("Copy address");
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_API_KEY ?? "";
   const hasCoordinates = order.deliveryLat !== null && order.deliveryLng !== null;
 
@@ -44,6 +45,22 @@ export default function OrderApprovalMap({ order, onApprove, onReject, onClose }
     if (!mapQuery.trim()) return null;
     return `https://www.mapbox.com/search?query=${encodeURIComponent(mapQuery)}`;
   }, [mapQuery]);
+
+  const handleCopyAddress = async () => {
+    const addressText = (order.deliveryAddress ?? "").trim();
+    if (!addressText || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(addressText);
+      setCopyLabel("Copied");
+      window.setTimeout(() => setCopyLabel("Copy address"), 1800);
+    } catch {
+      setCopyLabel("Copy failed");
+      window.setTimeout(() => setCopyLabel("Copy address"), 1800);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
@@ -82,17 +99,26 @@ export default function OrderApprovalMap({ order, onApprove, onReject, onClose }
               <MapPin className="h-3.5 w-3.5 text-emerald-600" />
               Mapbox Address Review
             </div>
-            {mapboxOpenUrl && (
-              <a
-                href={mapboxOpenUrl}
-                target="_blank"
-                rel="noreferrer"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void handleCopyAddress()}
                 className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
               >
-                Open
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            )}
+                <ClipboardCopy className="h-3.5 w-3.5" />
+                {copyLabel}
+              </button>
+              {mapboxOpenUrl && (
+                <a
+                  href={mapboxOpenUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Open
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-left">

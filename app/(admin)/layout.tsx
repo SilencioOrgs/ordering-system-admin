@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Header } from "@/components/layout/Header";
-import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { Sidebar } from "@/components/layout/Sidebar";
 
 const titleMap: Record<string, string> = {
@@ -28,11 +27,10 @@ export default function AdminShellLayout({ children }: { children: React.ReactNo
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} isMobile />
       <div className="w-full lg:ml-64">
         <Header pageTitle={title} onMenuClick={() => setIsSidebarOpen(true)} />
-        <main id="main-content" className="mx-auto w-full max-w-7xl p-3 pb-20 md:p-6 md:pb-20 lg:pb-6">
+        <main id="main-content" className="mx-auto w-full max-w-7xl p-3 pb-6 md:p-6 md:pb-6">
           {children}
         </main>
       </div>
-      <MobileBottomNav />
     </div>
   );
 }

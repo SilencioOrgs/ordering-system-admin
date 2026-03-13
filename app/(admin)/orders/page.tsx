@@ -549,18 +549,22 @@ export default function OrdersPage() {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-900">{order.paymentMethod}</span>
-                          <StatusBadge status={order.paymentStatus === "Verified" ? "Verified" : order.paymentStatus} size="sm" />
-                        </div>
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900">{order.paymentMethod}</span>
+                            <StatusBadge status={order.paymentStatus === "Verified" ? "Verified" : order.paymentStatus} size="sm" />
+                          </div>
                         {order.receiptExtraction?.referenceNumber ? (
                           <p className="text-sm text-slate-600">
                             Ref: <span className="font-semibold text-slate-800">{order.receiptExtraction.referenceNumber}</span>
                           </p>
+                        ) : order.receiptExtraction ? (
+                          <p className="text-sm text-amber-700">
+                            Receipt uploaded, but reference details need review
+                          </p>
                         ) : (
                           <p className="text-sm text-slate-500">
-                            {order.paymentMethod === "COD" ? "Collect on delivery" : "No receipt details yet"}
+                            {order.paymentMethod === "COD" ? "Collect on delivery" : "No verified receipt details saved yet"}
                           </p>
                         )}
                       </div>

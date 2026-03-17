@@ -3,7 +3,6 @@
 import {
   ClipboardList,
   LayoutDashboard,
-  Leaf,
   type LucideIcon,
   LogOut,
   MessageCircle,
@@ -12,6 +11,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -71,7 +71,9 @@ export function Sidebar({ isOpen, onClose, isMobile }: { isOpen: boolean; onClos
       >
         <div className="h-16 border-b border-slate-800 px-4">
           <div className="flex h-full items-center gap-3">
-            <Leaf className="h-5 w-5 text-emerald-400" />
+            <div className="relative h-9 w-9 overflow-hidden rounded-xl border border-emerald-500/20 bg-slate-800">
+              <Image src="/logo.png" alt="Ate Ai's Kitchen logo" fill className="object-cover" priority />
+            </div>
             <div>
               <p className="text-sm font-semibold text-white">Ate Ai&apos;s Kitchen</p>
               <span className="mt-1 inline-block rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] uppercase tracking-widest text-emerald-400">

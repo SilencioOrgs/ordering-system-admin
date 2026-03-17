@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import {
   ClipboardCopy,
   ExternalLink,
@@ -398,6 +399,7 @@ export default function OrdersPage() {
 
   const renderActions = (order: AdminOrder) => {
     const isWalletPayment = order.paymentMethod === "GCash" || order.paymentMethod === "Maya";
+    const receiptImageUrl = order.paymentProofUrl ?? order.receiptExtraction?.sourceImageUrl ?? null;
     const needsPaymentReview = isWalletPayment && order.paymentStatus === "Awaiting Verification";
     const canReviewAddress =
       order.deliveryMode === "Delivery" &&
@@ -419,6 +421,16 @@ export default function OrdersPage() {
           >
             <ShieldCheck className="h-3.5 w-3.5" />
             Review Payment
+          </button>
+        ) : null}
+
+        {!needsPaymentReview && receiptImageUrl ? (
+          <button
+            onClick={() => setPaymentReviewOrder(order)}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            View Receipt
           </button>
         ) : null}
 
@@ -609,11 +621,24 @@ export default function OrdersPage() {
 
       {paymentReviewOrder ? (
         <ModalShell
-          title="Approve Wallet Payment"
+          title={paymentReviewOrder.paymentStatus === "Awaiting Verification" ? "Approve Wallet Payment" : "View Wallet Receipt"}
           subtitle={`${paymentReviewOrder.orderNumber} - ${paymentReviewOrder.customerName}`}
           onClose={() => setPaymentReviewOrder(null)}
         >
           <div className="space-y-4">
+            {paymentReviewOrder.paymentProofUrl || paymentReviewOrder.receiptExtraction?.sourceImageUrl ? (
+              <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                <div className="relative h-72 w-full bg-white">
+                  <Image
+                    src={paymentReviewOrder.paymentProofUrl ?? paymentReviewOrder.receiptExtraction?.sourceImageUrl ?? ""}
+                    alt={`Receipt for ${paymentReviewOrder.orderNumber}`}
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Payment Method</p>
@@ -677,26 +702,28 @@ export default function OrdersPage() {
               </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-2 pt-2">
-              <button
-                onClick={() => void handleApprovePayment(paymentReviewOrder)}
-                disabled={isSubmitting}
-                className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Approve Payment
-              </button>
-              <button
-                onClick={() => {
-                  setRejectOrderTarget(paymentReviewOrder);
-                  setRejectionReason(paymentReviewOrder.adminNote ?? "Payment reference did not match.");
-                  setPaymentReviewOrder(null);
-                }}
-                disabled={isSubmitting}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Reject Order
-              </button>
-            </div>
+            {paymentReviewOrder.paymentStatus === "Awaiting Verification" ? (
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  onClick={() => void handleApprovePayment(paymentReviewOrder)}
+                  disabled={isSubmitting}
+                  className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Approve Payment
+                </button>
+                <button
+                  onClick={() => {
+                    setRejectOrderTarget(paymentReviewOrder);
+                    setRejectionReason(paymentReviewOrder.adminNote ?? "Payment reference did not match.");
+                    setPaymentReviewOrder(null);
+                  }}
+                  disabled={isSubmitting}
+                  className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Reject Order
+                </button>
+              </div>
+            ) : null}
           </div>
         </ModalShell>
       ) : null}

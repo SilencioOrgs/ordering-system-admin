@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/auth/adminAuth";
+import { awardDeliveredOrderRewards, createUserNotification } from "@/lib/rewardService";
 import { createServiceClient } from "@/lib/supabase/server";
 
 type Params = { params: Promise<{ id: string }> };
@@ -54,15 +55,89 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 
   const supabase = createServiceClient();
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select(
+      `
+      id,
+      user_id,
+      order_number,
+      subtotal,
+      delivery_fee,
+      total,
+      status,
+      payment_status,
+      applied_reward_id,
+      reward_source,
+      customer_name,
+      created_at
+    `
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!existingOrder) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
+
   const { data, error } = await supabase
     .from("orders")
     .update(payload)
     .eq("id", id)
-    .select("id, status, payment_status, admin_note")
+    .select("id, user_id, order_number, subtotal, delivery_fee, total, status, payment_status, admin_note, created_at")
     .single();
 
   if (error || !data) {
     return NextResponse.json({ error: error?.message ?? "Update failed" }, { status: 500 });
+  }
+
+  if (data.user_id) {
+    if (payload.payment_status && payload.payment_status !== existingOrder.payment_status) {
+      await createUserNotification(
+        data.user_id,
+        `Payment status: ${data.payment_status}`,
+        `Order ${data.order_number} payment is now ${data.payment_status}.`,
+        "order",
+        { orderId: data.id }
+      );
+    }
+
+    if (payload.status && payload.status !== existingOrder.status) {
+      await createUserNotification(
+        data.user_id,
+        `Order ${data.order_number}: ${data.status}`,
+        data.status === "Delivered"
+          ? "Your order has been delivered. Please rate your experience."
+          : `Your order is now ${data.status}.`,
+        data.status === "Delivered" ? "rating_prompt" : "order",
+        { orderId: data.id }
+      );
+    }
+  }
+
+  if (payload.status === "Cancelled" && existingOrder.reward_source === "user_voucher" && existingOrder.applied_reward_id) {
+    await supabase
+      .from("user_vouchers")
+      .update({
+        status: "active",
+        used_order_id: null,
+        used_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingOrder.applied_reward_id)
+      .eq("used_order_id", data.id);
+  }
+
+  if (payload.status === "Delivered" && existingOrder.status !== "Delivered" && data.user_id) {
+    await awardDeliveredOrderRewards({
+      id: data.id,
+      userId: data.user_id,
+      orderNumber: data.order_number,
+      subtotal: Number(data.subtotal ?? 0),
+      deliveryFee: Number(data.delivery_fee ?? 0),
+      total: Number(data.total ?? 0),
+      createdAt: data.created_at,
+    });
   }
 
   return NextResponse.json({

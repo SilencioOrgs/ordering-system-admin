@@ -1,9 +1,21 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useToast } from "@/components/shared/Toast";
+import {
+  getDefaultRewardSettings,
+  getDefaultStoreSettings,
+  type RewardSettingsForm,
+  type StoreSettingsForm,
+} from "@/lib/rewards";
+
+type SettingsResponse = {
+  storeSettings?: StoreSettingsForm & { id?: string | null };
+  rewardSettings?: RewardSettingsForm & { id?: string | null };
+  error?: string;
+};
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -13,16 +25,507 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [storeSettings, setStoreSettings] = useState<StoreSettingsForm>(getDefaultStoreSettings());
+  const [rewardSettings, setRewardSettings] = useState<RewardSettingsForm>(getDefaultRewardSettings());
+  const [loading, setLoading] = useState(true);
+  const [savingStore, setSavingStore] = useState(false);
+  const [savingRewards, setSavingRewards] = useState(false);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const response = await fetch("/api/admin/settings", { cache: "no-store" });
+      const body = (await response.json()) as SettingsResponse;
+
+      if (!response.ok) {
+        toast({
+          type: "error",
+          title: "Load failed",
+          message: body.error ?? "Unable to fetch settings.",
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (body.storeSettings) {
+        setStoreSettings(body.storeSettings);
+      }
+      if (body.rewardSettings) {
+        setRewardSettings(body.rewardSettings);
+      }
+      setLoading(false);
+    };
+
+    void loadSettings();
+  }, [toast]);
+
+  const saveSettings = async (mode: "store" | "rewards") => {
+    if (mode === "store") {
+      setSavingStore(true);
+    } else {
+      setSavingRewards(true);
+    }
+
+    const response = await fetch("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storeSettings,
+        rewardSettings,
+      }),
+    });
+
+    const body = (await response.json()) as { error?: string };
+
+    if (!response.ok) {
+      toast({
+        type: "error",
+        title: "Save failed",
+        message: body.error ?? "Unable to save settings.",
+      });
+    } else {
+      toast({
+        type: "success",
+        title: mode === "store" ? "Store settings saved" : "Reward settings saved",
+      });
+    }
+
+    if (mode === "store") {
+      setSavingStore(false);
+    } else {
+      setSavingRewards(false);
+    }
+  };
+
+  const activeSeasonalMonths = useMemo(
+    () =>
+      rewardSettings.seasonalRules
+        .map((rule) => `${rule.label}: ${rule.months.join(", ")}`)
+        .join(" | "),
+    [rewardSettings.seasonalRules]
+  );
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4">
-      <Section title="Store Info" onSave={() => toast({ type: "success", title: "Store info saved" })}>
+    <div className="mx-auto w-full max-w-5xl space-y-4">
+      <Section title="Store Info" onSave={() => void saveSettings("store")} saving={savingStore}>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field id="store-name" label="Store name"><input id="store-name" defaultValue="Ate Ai's Kitchen" className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]" /></Field>
-          <Field id="store-phone" label="Contact number"><input id="store-phone" defaultValue="0917-888-1122" className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]" /></Field>
-          <Field id="store-address" label="Address" wide><input id="store-address" defaultValue="Poblacion, San Pedro, Laguna" className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]" /></Field>
-          <Field id="fee" label="Delivery fee (PHP)"><input id="fee" type="number" defaultValue={60} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]" /></Field>
-          <Field id="notice" label="Advance notice days"><input id="notice" type="number" defaultValue={1} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]" /></Field>
+          <Field id="store-name" label="Store name">
+            <input
+              id="store-name"
+              value={storeSettings.storeName}
+              onChange={(event) => setStoreSettings((prev) => ({ ...prev, storeName: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="store-phone" label="Contact number">
+            <input
+              id="store-phone"
+              value={storeSettings.contactNumber}
+              onChange={(event) => setStoreSettings((prev) => ({ ...prev, contactNumber: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="store-address" label="Address" wide>
+            <input
+              id="store-address"
+              value={storeSettings.storeAddress}
+              onChange={(event) => setStoreSettings((prev) => ({ ...prev, storeAddress: event.target.value }))}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="fee" label="Delivery fee (PHP)">
+            <input
+              id="fee"
+              type="number"
+              value={storeSettings.deliveryFee}
+              onChange={(event) => setStoreSettings((prev) => ({ ...prev, deliveryFee: Number(event.target.value) }))}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="notice" label="Advance notice days">
+            <input
+              id="notice"
+              type="number"
+              value={storeSettings.advanceNoticeDays}
+              onChange={(event) =>
+                setStoreSettings((prev) => ({ ...prev, advanceNoticeDays: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="Voucher Controls" onSave={() => void saveSettings("rewards")} saving={savingRewards}>
+        <Toggle
+          label="Enable rewards program"
+          checked={rewardSettings.rewardsEnabled}
+          onChange={(checked) => setRewardSettings((prev) => ({ ...prev, rewardsEnabled: checked }))}
+        />
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field id="welcome-enabled" label="First order voucher">
+            <div className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+              <input
+                id="welcome-enabled"
+                type="checkbox"
+                checked={rewardSettings.welcomeVoucherEnabled}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({ ...prev, welcomeVoucherEnabled: event.target.checked }))
+                }
+                className="h-4 w-4"
+              />
+              <span className="text-sm text-slate-700">Enabled</span>
+            </div>
+          </Field>
+          <Field id="welcome-percent" label="First order percent off">
+            <input
+              id="welcome-percent"
+              type="number"
+              value={rewardSettings.welcomeVoucherPercent}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, welcomeVoucherPercent: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="grid grid-cols-[1.3fr_1fr_1fr_0.8fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <span>Order value rule</span>
+            <span>Min order</span>
+            <span>Percent off</span>
+            <span>Free ship</span>
+          </div>
+          {rewardSettings.orderValueRules.map((rule, index) => (
+            <div key={rule.id} className="grid grid-cols-[1.3fr_1fr_1fr_0.8fr] gap-3 border-t border-slate-100 px-4 py-3">
+              <div>
+                <input
+                  value={rule.label}
+                  onChange={(event) =>
+                    setRewardSettings((prev) => ({
+                      ...prev,
+                      orderValueRules: prev.orderValueRules.map((entry, ruleIndex) =>
+                        ruleIndex === index ? { ...entry, label: event.target.value } : entry
+                      ),
+                    }))
+                  }
+                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                />
+              </div>
+              <input
+                type="number"
+                value={rule.minOrderAmount}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    orderValueRules: prev.orderValueRules.map((entry, ruleIndex) =>
+                      ruleIndex === index ? { ...entry, minOrderAmount: Number(event.target.value) } : entry
+                    ),
+                  }))
+                }
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+              <input
+                type="number"
+                value={rule.percentOff ?? 0}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    orderValueRules: prev.orderValueRules.map((entry, ruleIndex) =>
+                      ruleIndex === index ? { ...entry, percentOff: Number(event.target.value) || null } : entry
+                    ),
+                  }))
+                }
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+              <label className="flex items-center justify-center rounded-lg border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={rule.freeShipping}
+                  onChange={(event) =>
+                    setRewardSettings((prev) => ({
+                      ...prev,
+                      orderValueRules: prev.orderValueRules.map((entry, ruleIndex) =>
+                        ruleIndex === index ? { ...entry, freeShipping: event.target.checked } : entry
+                      ),
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Seasonal promos: {activeSeasonalMonths}
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="grid grid-cols-[1.4fr_1fr_1fr_0.8fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <span>Seasonal promo</span>
+            <span>Months</span>
+            <span>Percent off</span>
+            <span>Active</span>
+          </div>
+          {rewardSettings.seasonalRules.map((rule, index) => (
+            <div key={rule.id} className="grid grid-cols-[1.4fr_1fr_1fr_0.8fr] gap-3 border-t border-slate-100 px-4 py-3">
+              <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800">{rule.label}</div>
+              <input
+                type="text"
+                value={rule.months.join(",")}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    seasonalRules: prev.seasonalRules.map((entry, ruleIndex) =>
+                      ruleIndex === index
+                        ? {
+                            ...entry,
+                            months: event.target.value
+                              .split(",")
+                              .map((value) => Number(value.trim()))
+                              .filter((value) => Number.isFinite(value) && value >= 1 && value <= 12),
+                          }
+                        : entry
+                    ),
+                  }))
+                }
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+              <input
+                type="number"
+                value={rule.percentOff ?? 0}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    seasonalRules: prev.seasonalRules.map((entry, ruleIndex) =>
+                      ruleIndex === index ? { ...entry, percentOff: Number(event.target.value) || null } : entry
+                    ),
+                  }))
+                }
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+              <label className="flex items-center justify-center rounded-lg border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={rule.isActive}
+                  onChange={(event) =>
+                    setRewardSettings((prev) => ({
+                      ...prev,
+                      seasonalRules: prev.seasonalRules.map((entry, ruleIndex) =>
+                        ruleIndex === index ? { ...entry, isActive: event.target.checked } : entry
+                      ),
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Loyalty & Bonus Controls" onSave={() => void saveSettings("rewards")} saving={savingRewards}>
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="grid grid-cols-[1.3fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <span>Loyalty tier</span>
+            <span>Minimum points</span>
+            <span>Percent off</span>
+            <span>Free shipping</span>
+          </div>
+          {rewardSettings.loyaltyTiers.map((tier, index) => (
+            <div key={tier.id} className="grid grid-cols-[1.3fr_1fr_1fr_1fr] gap-3 border-t border-slate-100 px-4 py-3">
+              <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800">{tier.name}</div>
+              <input
+                type="number"
+                value={tier.minPoints}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    loyaltyTiers: prev.loyaltyTiers.map((entry, tierIndex) =>
+                      tierIndex === index ? { ...entry, minPoints: Number(event.target.value) } : entry
+                    ),
+                  }))
+                }
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+              <input
+                type="number"
+                value={tier.percentOff}
+                onChange={(event) =>
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    loyaltyTiers: prev.loyaltyTiers.map((entry, tierIndex) =>
+                      tierIndex === index ? { ...entry, percentOff: Number(event.target.value) } : entry
+                    ),
+                  }))
+                }
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+              <input
+                type="text"
+                value={tier.freeShippingAlways ? "Always" : tier.monthlyFreeShippingLimit ?? 0}
+                onChange={(event) => {
+                  const value = event.target.value.trim().toLowerCase();
+                  setRewardSettings((prev) => ({
+                    ...prev,
+                    loyaltyTiers: prev.loyaltyTiers.map((entry, tierIndex) =>
+                      tierIndex === index
+                        ? {
+                            ...entry,
+                            freeShippingAlways: value === "always",
+                            monthlyFreeShippingLimit: value === "always" ? null : Number(value) || null,
+                          }
+                        : entry
+                    ),
+                  }));
+                }}
+                className="h-10 rounded-lg border border-slate-200 px-3 text-sm"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field id="review-points" label="Review bonus points">
+            <input
+              id="review-points"
+              type="number"
+              value={rewardSettings.reviewPoints}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, reviewPoints: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="first-order-points" label="First order of month bonus">
+            <input
+              id="first-order-points"
+              type="number"
+              value={rewardSettings.firstOrderOfMonthPoints}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, firstOrderOfMonthPoints: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="rankup-percent" label="Rank-up voucher percent">
+            <input
+              id="rankup-percent"
+              type="number"
+              value={rewardSettings.rankUpVoucherPercent}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, rankUpVoucherPercent: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="comeback-percent" label="Comeback voucher percent">
+            <input
+              id="comeback-percent"
+              type="number"
+              value={rewardSettings.comebackVoucherPercent}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, comebackVoucherPercent: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="comeback-days" label="Inactive days before comeback">
+            <input
+              id="comeback-days"
+              type="number"
+              value={rewardSettings.comebackInactiveDays}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, comebackInactiveDays: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="streak-percent" label="Streak reward percent">
+            <input
+              id="streak-percent"
+              type="number"
+              value={rewardSettings.streakRewardPercent}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, streakRewardPercent: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="double-multiplier" label="Double points multiplier">
+            <input
+              id="double-multiplier"
+              type="number"
+              value={rewardSettings.doublePointsMultiplier}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({ ...prev, doublePointsMultiplier: Number(event.target.value) }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field id="double-start" label="Double points starts at">
+            <input
+              id="double-start"
+              type="datetime-local"
+              value={rewardSettings.doublePointsStartsAt ? rewardSettings.doublePointsStartsAt.slice(0, 16) : ""}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({
+                  ...prev,
+                  doublePointsStartsAt: event.target.value ? new Date(event.target.value).toISOString() : null,
+                }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+          <Field id="double-end" label="Double points ends at">
+            <input
+              id="double-end"
+              type="datetime-local"
+              value={rewardSettings.doublePointsEndsAt ? rewardSettings.doublePointsEndsAt.slice(0, 16) : ""}
+              onChange={(event) =>
+                setRewardSettings((prev) => ({
+                  ...prev,
+                  doublePointsEndsAt: event.target.value ? new Date(event.target.value).toISOString() : null,
+                }))
+              }
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            />
+          </Field>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <Toggle
+            label="Enable comeback vouchers"
+            checked={rewardSettings.comebackEnabled}
+            onChange={(checked) => setRewardSettings((prev) => ({ ...prev, comebackEnabled: checked }))}
+          />
+          <Toggle
+            label="Enable streak vouchers"
+            checked={rewardSettings.streakEnabled}
+            onChange={(checked) => setRewardSettings((prev) => ({ ...prev, streakEnabled: checked }))}
+          />
+          <Toggle
+            label="Enable double points day"
+            checked={rewardSettings.doublePointsEnabled}
+            onChange={(checked) => setRewardSettings((prev) => ({ ...prev, doublePointsEnabled: checked }))}
+          />
+          <Toggle
+            label="Enable loot spin flag"
+            checked={rewardSettings.lootSpinEnabled}
+            onChange={(checked) => setRewardSettings((prev) => ({ ...prev, lootSpinEnabled: checked }))}
+          />
         </div>
       </Section>
 
@@ -50,12 +553,6 @@ export default function SettingsPage() {
         <PasswordField id="confirm-pass" label="Confirm new password" value={confirmPassword} onChange={setConfirmPassword} visible={showConfirm} toggle={() => setShowConfirm((v) => !v)} />
       </Section>
 
-      <Section title="Notifications" onSave={() => toast({ type: "success", title: "Notification settings saved" })}>
-        <Toggle label="Email on new order" defaultChecked />
-        <Toggle label="Email on new message" defaultChecked />
-        <Toggle label="Browser notifications" />
-      </Section>
-
       <section className="rounded-xl bg-white p-4 shadow-sm md:p-6">
         <h2 className="mb-4 text-base font-semibold text-slate-900">Danger Zone</h2>
         <button disabled title="Coming soon" className="h-10 cursor-not-allowed rounded-lg bg-slate-200 px-4 text-sm text-slate-500">Reset All Orders</button>
@@ -64,12 +561,28 @@ export default function SettingsPage() {
   );
 }
 
-function Section({ title, children, onSave }: { title: string; children: React.ReactNode; onSave: () => void }) {
+function Section({
+  title,
+  children,
+  onSave,
+  saving = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onSave: () => void;
+  saving?: boolean;
+}) {
   return (
     <section className="rounded-xl bg-white p-4 shadow-sm md:p-6">
       <h2 className="mb-4 text-base font-semibold text-slate-900">{title}</h2>
       <div className="space-y-3">{children}</div>
-      <button onClick={onSave} className="mt-4 min-h-11 rounded-lg bg-emerald-700 px-4 text-sm font-medium text-white hover:bg-emerald-800">Save Changes</button>
+      <button
+        onClick={onSave}
+        disabled={saving}
+        className="mt-4 min-h-11 rounded-lg bg-emerald-700 px-4 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {saving ? "Saving..." : "Save Changes"}
+      </button>
     </section>
   );
 }
@@ -90,11 +603,19 @@ function PasswordField({ id, label, value, onChange, visible, toggle }: { id: st
   );
 }
 
-function Toggle({ label, defaultChecked = false }: { label: string; defaultChecked?: boolean }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
   return (
     <label className="flex min-h-11 items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
       <span className="text-sm text-slate-700">{label}</span>
-      <input type="checkbox" defaultChecked={defaultChecked} className="h-4 w-4" />
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4" />
     </label>
   );
 }

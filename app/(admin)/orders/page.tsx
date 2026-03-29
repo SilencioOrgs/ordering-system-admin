@@ -64,8 +64,14 @@ type AdminOrder = {
   deliveryLng: number | null;
   subtotal: number;
   deliveryFee: number;
+  discountAmount: number;
+  shippingDiscountAmount: number;
   total: number;
   status: AdminOrderStatus;
+  scheduledDate: string | null;
+  appliedRewardTitle: string | null;
+  pointsEarned: number;
+  bonusPointsEarned: number;
   createdAt: string;
   adminNote: string | null;
   rejectionReason: string | null;
@@ -541,6 +547,11 @@ export default function OrdersPage() {
                       <div className="space-y-1">
                         <p className="font-semibold text-slate-900">{order.orderNumber}</p>
                         <p className="text-sm text-slate-500">{formatDateTime(order.createdAt)}</p>
+                        {order.scheduledDate ? (
+                          <p className="text-xs font-medium text-emerald-700">
+                            Scheduled: {new Date(`${order.scheduledDate}T00:00:00`).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+                          </p>
+                        ) : null}
                         <p className="text-sm text-slate-600">{buildItemSummary(order)}</p>
                         <p className="text-xs text-slate-400">{order.items.length} item(s)</p>
                       </div>
@@ -587,6 +598,17 @@ export default function OrdersPage() {
                         <p className="text-xs text-slate-500">
                           Subtotal {formatCurrency(order.subtotal)}
                           {order.deliveryFee > 0 ? ` + delivery ${formatCurrency(order.deliveryFee)}` : ""}
+                        </p>
+                        {order.discountAmount > 0 || order.shippingDiscountAmount > 0 ? (
+                          <p className="text-xs font-medium text-emerald-700">
+                            Savings {formatCurrency(order.discountAmount + order.shippingDiscountAmount)}
+                          </p>
+                        ) : null}
+                        {order.appliedRewardTitle ? (
+                          <p className="text-xs text-slate-500">Reward: {order.appliedRewardTitle}</p>
+                        ) : null}
+                        <p className="text-xs text-slate-500">
+                          Points: {order.pointsEarned + order.bonusPointsEarned}
                         </p>
                       </div>
                     </td>

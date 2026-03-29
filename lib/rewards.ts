@@ -4,6 +4,14 @@ export type StoreSettingsForm = {
   storeAddress: string;
   deliveryFee: number;
   advanceNoticeDays: number;
+  gcashAccountName: string;
+  gcashAccountNumber: string;
+  gcashQrUrl: string;
+  gcashQrPublicId: string;
+  mayaAccountName: string;
+  mayaAccountNumber: string;
+  mayaQrUrl: string;
+  mayaQrPublicId: string;
 };
 
 export type RewardSettingsForm = {
@@ -71,6 +79,14 @@ export function getDefaultStoreSettings(): StoreSettingsForm {
     storeAddress: "Poblacion, San Pedro, Laguna",
     deliveryFee: 50,
     advanceNoticeDays: 3,
+    gcashAccountName: "Ate Ai's Kitchen",
+    gcashAccountNumber: "",
+    gcashQrUrl: "",
+    gcashQrPublicId: "",
+    mayaAccountName: "Ate Ai's Kitchen",
+    mayaAccountNumber: "",
+    mayaQrUrl: "",
+    mayaQrPublicId: "",
   };
 }
 

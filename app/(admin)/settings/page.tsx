@@ -1,6 +1,7 @@
 "use client";
 
-import { Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
+import { Eye, EyeOff, QrCode, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useToast } from "@/components/shared/Toast";
@@ -17,6 +18,8 @@ type SettingsResponse = {
   error?: string;
 };
 
+type WalletProviderKey = "gcash" | "maya";
+
 export default function SettingsPage() {
   const { toast } = useToast();
   const [showCurrent, setShowCurrent] = useState(false);
@@ -30,6 +33,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingStore, setSavingStore] = useState(false);
   const [savingRewards, setSavingRewards] = useState(false);
+  const [uploadingWalletQr, setUploadingWalletQr] = useState<Record<WalletProviderKey, boolean>>({
+    gcash: false,
+    maya: false,
+  });
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -96,6 +103,72 @@ export default function SettingsPage() {
     }
   };
 
+  const uploadWalletQr = async (provider: WalletProviderKey, file: File) => {
+    setUploadingWalletQr((prev) => ({ ...prev, [provider]: true }));
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("provider", provider);
+
+    const previousPublicId = provider === "gcash" ? storeSettings.gcashQrPublicId : storeSettings.mayaQrPublicId;
+    if (previousPublicId) {
+      formData.append("previousPublicId", previousPublicId);
+    }
+
+    try {
+      const response = await fetch("/api/admin/settings/upload-payment-qr", {
+        method: "POST",
+        body: formData,
+      });
+
+      const body = (await response.json()) as {
+        error?: string;
+        url?: string;
+        publicId?: string;
+      };
+
+      if (!response.ok || !body.url || !body.publicId) {
+        throw new Error(body.error ?? "Unable to upload QR image.");
+      }
+
+      setStoreSettings((prev) =>
+        provider === "gcash"
+          ? {
+              ...prev,
+              gcashQrUrl: body.url ?? "",
+              gcashQrPublicId: body.publicId ?? "",
+            }
+          : {
+              ...prev,
+              mayaQrUrl: body.url ?? "",
+              mayaQrPublicId: body.publicId ?? "",
+            }
+      );
+
+      toast({
+        type: "success",
+        title: `${provider === "gcash" ? "GCash" : "Maya"} QR uploaded`,
+        message: "Save store settings to publish this QR in the ordering system.",
+      });
+    } catch (error) {
+      toast({
+        type: "error",
+        title: "Upload failed",
+        message: error instanceof Error ? error.message : "Unable to upload QR image.",
+      });
+    } finally {
+      setUploadingWalletQr((prev) => ({ ...prev, [provider]: false }));
+    }
+  };
+
+  const clearWalletQr = (provider: WalletProviderKey) => {
+    setStoreSettings((prev) =>
+      provider === "gcash"
+        ? { ...prev, gcashQrUrl: "", gcashQrPublicId: "" }
+        : { ...prev, mayaQrUrl: "", mayaQrPublicId: "" }
+    );
+  };
+
   const activeSeasonalMonths = useMemo(
     () =>
       rewardSettings.seasonalRules
@@ -160,6 +233,41 @@ export default function SettingsPage() {
               className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
             />
           </Field>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-semibold text-slate-900">Wallet Payment Settings</h3>
+            <p className="text-sm text-slate-500">
+              These account details and QR images appear in the customer&apos;s Scan to Pay modal.
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <WalletQrCard
+              providerLabel="GCash"
+              accountName={storeSettings.gcashAccountName}
+              accountNumber={storeSettings.gcashAccountNumber}
+              qrUrl={storeSettings.gcashQrUrl}
+              uploading={uploadingWalletQr.gcash}
+              onAccountNameChange={(value) => setStoreSettings((prev) => ({ ...prev, gcashAccountName: value }))}
+              onAccountNumberChange={(value) => setStoreSettings((prev) => ({ ...prev, gcashAccountNumber: value }))}
+              onUpload={(file) => void uploadWalletQr("gcash", file)}
+              onClear={() => clearWalletQr("gcash")}
+            />
+
+            <WalletQrCard
+              providerLabel="Maya"
+              accountName={storeSettings.mayaAccountName}
+              accountNumber={storeSettings.mayaAccountNumber}
+              qrUrl={storeSettings.mayaQrUrl}
+              uploading={uploadingWalletQr.maya}
+              onAccountNameChange={(value) => setStoreSettings((prev) => ({ ...prev, mayaAccountName: value }))}
+              onAccountNumberChange={(value) => setStoreSettings((prev) => ({ ...prev, mayaAccountNumber: value }))}
+              onUpload={(file) => void uploadWalletQr("maya", file)}
+              onClear={() => clearWalletQr("maya")}
+            />
+          </div>
         </div>
       </Section>
 
@@ -617,5 +725,105 @@ function Toggle({
       <span className="text-sm text-slate-700">{label}</span>
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4" />
     </label>
+  );
+}
+
+function WalletQrCard({
+  providerLabel,
+  accountName,
+  accountNumber,
+  qrUrl,
+  uploading,
+  onAccountNameChange,
+  onAccountNumberChange,
+  onUpload,
+  onClear,
+}: {
+  providerLabel: string;
+  accountName: string;
+  accountNumber: string;
+  qrUrl: string;
+  uploading: boolean;
+  onAccountNameChange: (value: string) => void;
+  onAccountNumberChange: (value: string) => void;
+  onUpload: (file: File) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{providerLabel}</p>
+          <p className="text-xs text-slate-500">Shown in checkout for wallet payments.</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+          {providerLabel}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">Account name</span>
+          <input
+            value={accountName}
+            onChange={(event) => onAccountNameChange(event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            placeholder="Ate Ai's Kitchen"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">Account number</span>
+          <input
+            value={accountNumber}
+            onChange={(event) => onAccountNumberChange(event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-200 px-3 text-[16px]"
+            placeholder="09123456789"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+        <div className="relative mx-auto aspect-square w-full max-w-[220px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          {qrUrl ? (
+            <Image src={qrUrl} alt={`${providerLabel} QR code`} fill className="object-contain p-3" />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-slate-400">
+              <QrCode className="h-10 w-10" />
+              <p className="text-xs font-medium">No QR uploaded yet</p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <label className="inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-800">
+            <Upload className="h-4 w-4" />
+            {uploading ? "Uploading..." : qrUrl ? "Change QR" : "Upload QR"}
+            <input
+              type="file"
+              className="hidden"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) {
+                  onUpload(file);
+                }
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={!qrUrl}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            Remove QR
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

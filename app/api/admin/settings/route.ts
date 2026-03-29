@@ -14,7 +14,7 @@ export async function GET() {
   const [storeResponse, rewardResponse] = await Promise.all([
     supabase
       .from("store_settings")
-      .select("id, store_name, contact_number, store_address, delivery_fee, advance_notice_days")
+      .select("*")
       .limit(1)
       .maybeSingle(),
     supabase
@@ -53,18 +53,49 @@ export async function GET() {
       .maybeSingle(),
   ]);
 
+  if (storeResponse.error || rewardResponse.error) {
+    return NextResponse.json(
+      {
+        error:
+          storeResponse.error?.message ??
+          rewardResponse.error?.message ??
+          "Unable to load admin settings.",
+      },
+      { status: 500 }
+    );
+  }
+
   const storeDefaults = getDefaultStoreSettings();
   const rewardDefaults = getDefaultRewardSettings();
+  const storeRecord = storeResponse.data ? (storeResponse.data as Record<string, unknown>) : null;
 
   return NextResponse.json({
-    storeSettings: storeResponse.data
+    storeSettings: storeRecord
       ? {
-          id: storeResponse.data.id,
-          storeName: storeResponse.data.store_name,
-          contactNumber: storeResponse.data.contact_number,
-          storeAddress: storeResponse.data.store_address,
-          deliveryFee: Number(storeResponse.data.delivery_fee ?? storeDefaults.deliveryFee),
-          advanceNoticeDays: Number(storeResponse.data.advance_notice_days ?? storeDefaults.advanceNoticeDays),
+          id: typeof storeRecord.id === "string" ? storeRecord.id : null,
+          storeName: storeRecord.store_name,
+          contactNumber: storeRecord.contact_number,
+          storeAddress: storeRecord.store_address,
+          deliveryFee: Number(storeRecord.delivery_fee ?? storeDefaults.deliveryFee),
+          advanceNoticeDays: Number(storeRecord.advance_notice_days ?? storeDefaults.advanceNoticeDays),
+          gcashAccountName:
+            typeof storeRecord.gcash_account_name === "string" && storeRecord.gcash_account_name.trim()
+              ? storeRecord.gcash_account_name
+              : storeDefaults.gcashAccountName,
+          gcashAccountNumber:
+            typeof storeRecord.gcash_account_number === "string" ? storeRecord.gcash_account_number : "",
+          gcashQrUrl: typeof storeRecord.gcash_qr_url === "string" ? storeRecord.gcash_qr_url : "",
+          gcashQrPublicId:
+            typeof storeRecord.gcash_qr_public_id === "string" ? storeRecord.gcash_qr_public_id : "",
+          mayaAccountName:
+            typeof storeRecord.maya_account_name === "string" && storeRecord.maya_account_name.trim()
+              ? storeRecord.maya_account_name
+              : storeDefaults.mayaAccountName,
+          mayaAccountNumber:
+            typeof storeRecord.maya_account_number === "string" ? storeRecord.maya_account_number : "",
+          mayaQrUrl: typeof storeRecord.maya_qr_url === "string" ? storeRecord.maya_qr_url : "",
+          mayaQrPublicId:
+            typeof storeRecord.maya_qr_public_id === "string" ? storeRecord.maya_qr_public_id : "",
         }
       : { id: null, ...storeDefaults },
     rewardSettings: rewardResponse.data
@@ -133,6 +164,24 @@ export async function PUT(req: NextRequest) {
       typeof body.storeSettings?.storeAddress === "string" ? body.storeSettings.storeAddress : storeDefaults.storeAddress,
     delivery_fee: Math.max(0, Number(body.storeSettings?.deliveryFee ?? storeDefaults.deliveryFee)),
     advance_notice_days: Math.max(0, Number(body.storeSettings?.advanceNoticeDays ?? storeDefaults.advanceNoticeDays)),
+    gcash_account_name:
+      typeof body.storeSettings?.gcashAccountName === "string"
+        ? body.storeSettings.gcashAccountName.trim() || storeDefaults.gcashAccountName
+        : storeDefaults.gcashAccountName,
+    gcash_account_number:
+      typeof body.storeSettings?.gcashAccountNumber === "string" ? body.storeSettings.gcashAccountNumber.trim() : "",
+    gcash_qr_url: typeof body.storeSettings?.gcashQrUrl === "string" ? body.storeSettings.gcashQrUrl.trim() : "",
+    gcash_qr_public_id:
+      typeof body.storeSettings?.gcashQrPublicId === "string" ? body.storeSettings.gcashQrPublicId.trim() : "",
+    maya_account_name:
+      typeof body.storeSettings?.mayaAccountName === "string"
+        ? body.storeSettings.mayaAccountName.trim() || storeDefaults.mayaAccountName
+        : storeDefaults.mayaAccountName,
+    maya_account_number:
+      typeof body.storeSettings?.mayaAccountNumber === "string" ? body.storeSettings.mayaAccountNumber.trim() : "",
+    maya_qr_url: typeof body.storeSettings?.mayaQrUrl === "string" ? body.storeSettings.mayaQrUrl.trim() : "",
+    maya_qr_public_id:
+      typeof body.storeSettings?.mayaQrPublicId === "string" ? body.storeSettings.mayaQrPublicId.trim() : "",
     updated_at: now,
   };
 
@@ -171,27 +220,52 @@ export async function PUT(req: NextRequest) {
     updated_at: now,
   };
 
-  const [{ data: storeExisting }, { data: rewardExisting }] = await Promise.all([
+  const [{ data: storeExisting, error: storeExistingError }, { data: rewardExisting, error: rewardExistingError }] = await Promise.all([
     supabase.from("store_settings").select("id").limit(1).maybeSingle(),
     supabase.from("reward_settings").select("id").limit(1).maybeSingle(),
   ]);
 
-  if (storeExisting?.id) {
-    await supabase.from("store_settings").update(storeSettings).eq("id", storeExisting.id);
-  } else {
-    await supabase.from("store_settings").insert({
-      ...storeSettings,
-      created_at: now,
-    });
+  if (storeExistingError || rewardExistingError) {
+    return NextResponse.json(
+      {
+        error:
+          storeExistingError?.message ??
+          rewardExistingError?.message ??
+          "Unable to prepare settings update.",
+      },
+      { status: 500 }
+    );
   }
 
-  if (rewardExisting?.id) {
-    await supabase.from("reward_settings").update(rewardSettings).eq("id", rewardExisting.id);
-  } else {
-    await supabase.from("reward_settings").insert({
-      ...rewardSettings,
-      created_at: now,
-    });
+  const storeMutation = storeExisting?.id
+    ? supabase.from("store_settings").update(storeSettings).eq("id", storeExisting.id)
+    : supabase.from("store_settings").insert({
+        ...storeSettings,
+        created_at: now,
+      });
+
+  const rewardMutation = rewardExisting?.id
+    ? supabase.from("reward_settings").update(rewardSettings).eq("id", rewardExisting.id)
+    : supabase.from("reward_settings").insert({
+        ...rewardSettings,
+        created_at: now,
+      });
+
+  const [{ error: storeMutationError }, { error: rewardMutationError }] = await Promise.all([
+    storeMutation,
+    rewardMutation,
+  ]);
+
+  if (storeMutationError || rewardMutationError) {
+    return NextResponse.json(
+      {
+        error:
+          storeMutationError?.message ??
+          rewardMutationError?.message ??
+          "Unable to save settings.",
+      },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ success: true });
